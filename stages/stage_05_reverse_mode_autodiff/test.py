@@ -6,7 +6,16 @@ Gradients are verified against central-difference numerical gradients:
     df/dx ~= (f(x + eps) - f(x - eps)) / (2 * eps)
 """
 
+import os
+import sys
+
 import pytest
+
+# Put the curriculum root on sys.path so ``import dlfs`` resolves no matter what
+# directory pytest is launched from.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 # This stage's extended Value (subclass of stage_02's Value) lives in its own
 # code.py; import it through the curriculum shim so the cumulative chain is real.

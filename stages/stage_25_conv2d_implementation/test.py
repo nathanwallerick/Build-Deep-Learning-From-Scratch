@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import importlib.util as _ilu
 import os as _os
+import sys as _sys
 
 import numpy as np
 import pytest
@@ -26,6 +27,12 @@ import pytest
 # Load this stage's code.py and the stage_09 Tensor.
 # ---------------------------------------------------------------------------
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
+
+# Put the curriculum root on sys.path so the code.py modules we exec below can
+# resolve ``from dlfs import stage_import`` regardless of pytest's launch dir.
+_ROOT = _os.path.dirname(_HERE)
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
 
 
 def _load(prefix: str):

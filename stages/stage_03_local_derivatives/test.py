@@ -10,11 +10,25 @@ parents), so this stage's tests run without standing up a full stage_02 graph.
 The dispatcher itself is the new behavior this stage adds on top of stage_02's
 imported ``Value``.
 """
+import os as _os
+import sys as _sys
 
 import math
 
 import pytest
 
+# --- resolve sibling code.py (avoid stdlib `code` collision) ---
+import importlib.util as _ilu
+_THIS_DIR = _os.path.dirname(_os.path.abspath(__file__))
+_ROOT = _os.path.dirname(_THIS_DIR)
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+_spec = _ilu.spec_from_file_location(
+    "code", _os.path.join(_THIS_DIR, "code.py")
+)
+_mod = _ilu.module_from_spec(_spec)
+_sys.modules["code"] = _mod
+_spec.loader.exec_module(_mod)
 from code import (
     d_add,
     d_sub,

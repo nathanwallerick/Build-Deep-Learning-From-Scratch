@@ -15,6 +15,8 @@ Covers the data-feeding plumbing built on top of stage_19:
 
 Run: pytest stage_20_dataloader/test.py
 """
+import os as _os
+import sys as _sys
 
 import os
 import sys
@@ -31,6 +33,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
+    # --- resolve sibling code.py (avoid stdlib `code` collision) ---
+    import importlib.util as _ilu
+    _THIS_DIR = _os.path.dirname(_os.path.abspath(__file__))
+    _ROOT = _os.path.dirname(_THIS_DIR)
+    if _ROOT not in _sys.path:
+        _sys.path.insert(0, _ROOT)
+    _spec = _ilu.spec_from_file_location(
+        "code", _os.path.join(_THIS_DIR, "code.py")
+    )
+    _mod = _ilu.module_from_spec(_spec)
+    _sys.modules["code"] = _mod
+    _spec.loader.exec_module(_mod)
     from code import (
         Dataset,
         DataLoader,

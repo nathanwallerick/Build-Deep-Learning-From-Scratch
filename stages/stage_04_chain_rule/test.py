@@ -10,12 +10,26 @@ Gradient checks use central differences (f(x+eps) - f(x-eps)) / (2*eps) and
 compare against the ANALYTICAL derivative your code returns. NumPy is used only
 to build/compare the numerical reference; your code must not use it.
 """
+import os as _os
+import sys as _sys
 
 import math
 
 import numpy as np
 import pytest
 
+# --- resolve sibling code.py (avoid stdlib `code` collision) ---
+import importlib.util as _ilu
+_THIS_DIR = _os.path.dirname(_os.path.abspath(__file__))
+_ROOT = _os.path.dirname(_THIS_DIR)
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+_spec = _ilu.spec_from_file_location(
+    "code", _os.path.join(_THIS_DIR, "code.py")
+)
+_mod = _ilu.module_from_spec(_spec)
+_sys.modules["code"] = _mod
+_spec.loader.exec_module(_mod)
 from code import (
     accumulate,
     backward_pass,
