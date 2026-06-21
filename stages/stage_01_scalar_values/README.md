@@ -5,16 +5,26 @@
 **Context** — This is the first stage of the whole curriculum and the seed of the autodiff engine you will build. You wrap a single floating-point number in a `Value` object and teach it to do arithmetic (`+`, `-`, `*`, `/`) through Python operator overloading. There are **no gradients yet** — that machinery (`.backward()` filling `grad`) arrives in stage 06, and there is **no computational graph yet** — that arrives in stage 02. Here you only build the object and the forward math, plus the conceptual foundation of variables, functions, and derivatives.
 
 **Background** — A neural network is just one enormous differentiable function built by composing tiny operations. To differentiate it automatically, we first need a data type we control at every step, instead of bare Python floats. A `Value` stores one number in `self.data`. Overloading `__add__`, `__mul__`, etc. lets `a + b` and `a * b` return *new* `Value`s, so expressions like `d = a * b + c` compose into the forward computation. The next stage (02) will subclass this `Value` to also record the operands and operation of each result — the skeleton of the computational graph — but here the result is just the number. The derivative is the foundation: for a function $f$, the derivative measures sensitivity of the output to a tiny change in an input,
-$$f'(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}.$$
+
+$$
+f'(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}.
+$$
+
 We approximate it numerically with the symmetric **central difference**, which has error $O(h^2)$ instead of $O(h)$:
-$$f'(x) \approx \frac{f(x+h) - f(x-h)}{2h}.$$
+
+$$
+f'(x) \approx \frac{f(x+h) - f(x-h)}{2h}.
+$$
+
 You will *not* derive analytic gradients in this stage — you only verify, numerically, that derivatives of your `Value` expressions exist and behave (e.g. $\frac{d}{da}(a b) = b$). Everything later (the computational graph in stage 02, the `Value` autodiff engine in stage 06) builds on the class and forward ops you write here.
 
 **Watch**
+
 - [The spelled-out intro to neural networks and backpropagation: building micrograd](https://www.youtube.com/watch?v=VMj-3S1tku0) — Karpathy builds exactly this `Value` object from scratch; watch the first ~25 min (the class, `data`, and operator overloading) and stop before gradients.
 - [Derivatives, the limit definition (Essence of Calculus, ch. 2)](https://www.youtube.com/watch?v=9vKqVkMQHKk) — 3Blue1Brown on what a derivative actually is, the intuition you will need from stage 02 onward.
 
 **Exercise** — Implement the base `Value` class in `code.py` (this is the origin: no `dlfs.stage_import`).
+
 - `Value(data)`: store the number in `self.data` (coerce to `float`). Also initialize `self.grad = 0.0` (used in later stages, not here).
 - `__repr__`: return `Value(data=<x>)`.
 - Implement, each returning a **new** `Value` holding the resulting number:
@@ -29,6 +39,7 @@ You will *not* derive analytic gradients in this stage — you only verify, nume
 - Acceptance: arithmetic on `Value`s matches the same arithmetic on raw floats; operations with ints/floats on either side work.
 
 **Done when**
-- [ ] `pytest stage_01_scalar_values/test.py` passes.
-- [ ] `Value` supports `+ - * / ** neg` and mixed int/float operands on both sides.
-- [ ] The central-difference test confirms numerical derivatives of `Value` expressions exist and match the expected slope within tolerance.
+
+- [X] `pytest stage_01_scalar_values/test.py` passes.
+- [X] `Value` supports `+ - * / ** neg` and mixed int/float operands on both sides.
+- [X] The central-difference test confirms numerical derivatives of `Value` expressions exist and match the expected slope within tolerance.
