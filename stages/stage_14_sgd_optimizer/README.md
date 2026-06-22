@@ -2,7 +2,7 @@
 
 **Imports + adds** — Imports `Tensor` from `stage_09` (via `dlfs.stage_import`) and uses it unchanged; ADDS a new `Optimizer` base class + `SGD` subclass — the optimizer contract later stages (momentum/Adam in `stage_18`) extend.
 
-**Context** — You now have a `Tensor` engine (`stage_09`) with broadcasting-correct backward (`stage_12`) and matmul/reductions (`stage_13`), plus layers (`stage_11`'s `Dense`) that expose `.parameters()`. So far you have updated weights by hand: call `.backward()`, then write `p.data -= lr * p.grad` for each parameter inline. This stage factors that update out into a reusable **optimizer** object — the same `torch.optim.SGD` interface every later stage (the training loop, momentum/Adam in `stage_18`, CNNs, the Transformer) will plug into.
+**Context** — You now have a `Tensor` engine (`stage_09`, with matmul `@` and `tanh`/`exp`/`log`), broadcasting-correct backward (`stage_12`), and reductions `sum`/`mean` (`stage_13`), plus layers (`stage_11`'s `Dense`) that expose `.parameters()`. So far you have updated weights by hand: call `.backward()`, then write `p.data -= lr * p.grad` for each parameter inline. This stage factors that update out into a reusable **optimizer** object — the same `torch.optim.SGD` interface every later stage (the training loop, momentum/Adam in `stage_18`, CNNs, the Transformer) will plug into.
 
 **Background** — Stochastic gradient descent is the simplest first-order optimizer. After a backward pass, every parameter tensor `p` holds `p.grad = ∂L/∂p` (accumulated correctly by `Tensor.backward()` from `stage_09`/`stage_12`/`stage_13`). SGD nudges each parameter a small step *down* the gradient:
 $$\theta \leftarrow \theta - \eta\, \nabla_\theta L,$$

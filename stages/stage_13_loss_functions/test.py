@@ -106,6 +106,95 @@ def analytic_grad(loss_fn, pred_np, *rest):
 
 
 # =========================================================================== #
+# sum / mean reductions (added to the Tensor in this stage)
+# =========================================================================== #
+def test_sum_all_forward_and_backward():
+    x = Tensor([[1.0, 2.0], [3.0, 4.0]])
+    s = x.sum()
+    assert np.isclose(loss_value(s), 10.0), f"sum() forward: {loss_value(s)}"
+    s.backward()
+    g = as_array(x.grad)
+    assert g.shape == (2, 2), f"grad shape: {g.shape}"
+    assert np.allclose(g, np.ones((2, 2))), f"sum() grad should be all ones, got\n{g}"
+
+
+def test_sum_axis0_forward_and_backward():
+    x = Tensor([[1.0, 2.0], [3.0, 4.0]])
+    s = x.sum(axis=0)
+    assert as_array(s).shape == (2,), f"sum(axis=0) shape: {as_array(s).shape}"
+    assert np.allclose(as_array(s), [4.0, 6.0]), f"sum(axis=0) values: {as_array(s)}"
+    # Sum the column-sums to a scalar so backward seeds cleanly.
+    s.sum().backward()
+    g = as_array(x.grad)
+    assert g.shape == (2, 2), f"grad shape: {g.shape}"
+    assert np.allclose(g, np.ones((2, 2))), f"sum(axis=0) grad should be ones, got\n{g}"
+
+
+def test_mean_all_forward_and_backward():
+    x = Tensor([[1.0, 2.0], [3.0, 4.0]])
+    m = x.mean()
+    assert np.isclose(loss_value(m), 2.5), f"mean() forward: {loss_value(m)}"
+    m.backward()
+    g = as_array(x.grad)
+    assert g.shape == (2, 2), f"grad shape: {g.shape}"
+    assert np.allclose(g, np.full((2, 2), 0.25)), f"mean() grad should be 1/N, got\n{g}"
+
+
+def test_mean_axis_keepdims_forward():
+    x = Tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    m = x.mean(axis=1, keepdims=True)
+    assert as_array(m).shape == (2, 1), f"mean(axis=1, keepdims) shape: {as_array(m).shape}"
+    assert np.allclose(as_array(m), [[2.0], [5.0]]), f"values: {as_array(m)}"
+
+
+def test_sum_gradcheck_against_central_diff():
+    """f = (x*x).sum() has analytic grad 2x; check it matches central differences."""
+    x_np = RNG.normal(size=(3, 4))
+
+    x = Tensor(x_np.copy())
+    if hasattr(x, "zero_grad"):
+        x.zero_grad()
+    L = (x * x).sum()
+    L.backward()
+    g_analytic = as_array(x.grad)
+
+    def f(p):
+        return loss_value((Tensor(p) * Tensor(p)).sum())
+
+    g_num = central_diff(f, x_np.copy())
+    assert np.allclose(g_analytic, 2.0 * x_np, atol=ATOL), (
+        f"analytic grad != 2x:\n analytic={g_analytic}\n 2x={2.0 * x_np}"
+    )
+    assert np.allclose(g_analytic, g_num, atol=ATOL, rtol=RTOL), (
+        f"sum gradcheck mismatch:\n analytic={g_analytic}\n numeric ={g_num}"
+    )
+
+
+def test_mean_gradcheck_against_central_diff():
+    """f = (x*x).mean() has analytic grad 2x/N; check vs central differences."""
+    x_np = RNG.normal(size=(2, 5))
+    N = x_np.size
+
+    x = Tensor(x_np.copy())
+    if hasattr(x, "zero_grad"):
+        x.zero_grad()
+    L = (x * x).mean()
+    L.backward()
+    g_analytic = as_array(x.grad)
+
+    def f(p):
+        return loss_value((Tensor(p) * Tensor(p)).mean())
+
+    g_num = central_diff(f, x_np.copy())
+    assert np.allclose(g_analytic, 2.0 * x_np / N, atol=ATOL), (
+        f"analytic grad != 2x/N:\n analytic={g_analytic}\n 2x/N={2.0 * x_np / N}"
+    )
+    assert np.allclose(g_analytic, g_num, atol=ATOL, rtol=RTOL), (
+        f"mean gradcheck mismatch:\n analytic={g_analytic}\n numeric ={g_num}"
+    )
+
+
+# =========================================================================== #
 # one_hot helper
 # =========================================================================== #
 def test_one_hot_shape_and_values():

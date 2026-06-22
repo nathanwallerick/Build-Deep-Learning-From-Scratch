@@ -47,7 +47,7 @@ try:
     _mod = _ilu.module_from_spec(_spec)
     _sys.modules["code"] = _mod
     _spec.loader.exec_module(_mod)
-    from code import MLP, Stage11_Dense, Stage9_Tensor
+    from code import MLP, Stage11_Dense, Stage9_Tensor, Tensor
 except (ImportError, NotImplementedError) as exc:  # pragma: no cover
     pytest.skip(
         f"stage_12 MLP / stage_11 Dense / stage_09 Tensor not importable yet: {exc}",
@@ -286,3 +286,84 @@ def test_zero_grad_clears_every_param():
     net.zero_grad()
     for p in net.parameters():
         assert np.allclose(as_array(p.grad), 0.0), "zero_grad must clear every param grad"
+
+
+# --- Broadcasting backward (the stage_12 Tensor subclass) --------------------
+# stage_09's Tensor only allows equal-shaped elementwise operands; this stage's
+# `Tensor` subclass adds broadcasting forward + unbroadcast backward, which
+# stage_13's stable softmax (`(B,C) - (B,1)`) and bias-row broadcasting need.
+def bcast_tensor(arr, requires_grad=True):
+    """Build a *broadcasting* Tensor (the stage_12 subclass), tolerating ctors."""
+    arr = np.asarray(arr, dtype=float)
+    try:
+        return Tensor(arr, requires_grad=requires_grad)
+    except TypeError:
+        return Tensor(arr)
+
+
+def test_tensor_is_broadcasting_subclass():
+    """The exported `Tensor` must be the stage_09 engine extended in this stage."""
+    assert issubclass(Tensor, Stage9_Tensor), (
+        "stage_12 must export a Tensor that subclasses the stage_09 Tensor"
+    )
+
+
+def test_broadcast_add_row_vector_forward_and_grad():
+    """(2,3) + (3,): forward equals numpy broadcast; (3,) grad is the column
+    sums (shape (3,)) and (2,3) grad is ones (seed=ones)."""
+    a_np = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])  # (2, 3)
+    b_np = np.array([10.0, 20.0, 30.0])                   # (3,)
+    a = bcast_tensor(a_np)
+    b = bcast_tensor(b_np)
+
+    z = a + b
+    # Forward matches numpy broadcasting.
+    assert as_array(z).shape == (2, 3)
+    assert np.allclose(as_array(z), a_np + b_np)
+
+    z.backward()  # seeds grad = ones_like(z), i.e. all-ones (2,3)
+    # d/da of sum(a + b) is ones at a's shape; d/db is the column-sums.
+    assert as_array(a.grad).shape == (2, 3)
+    assert np.allclose(as_array(a.grad), np.ones((2, 3)))
+    assert as_array(b.grad).shape == (3,), "broadcast (3,) operand grad must keep shape (3,)"
+    assert np.allclose(as_array(b.grad), np.ones((2, 3)).sum(axis=0))  # [2, 2, 2]
+
+
+def test_broadcast_sub_keepdims_column_forward_and_grad():
+    """(B,C) - (B,1): forward broadcasts the (B,1) column; the (B,1) operand's
+    grad sums across the C axis (shape (B,1)), as stage_13 softmax needs."""
+    B, C = 4, 3
+    x_np = np.arange(B * C, dtype=float).reshape(B, C)  # (B, C)
+    m_np = np.array([[0.5], [1.0], [-2.0], [3.0]])      # (B, 1)
+    x = bcast_tensor(x_np)
+    m = bcast_tensor(m_np)
+
+    z = x - m
+    assert as_array(z).shape == (B, C)
+    assert np.allclose(as_array(z), x_np - m_np)
+
+    z.backward()  # seed ones (B, C)
+    # d/dx of sum(x - m) is ones (B, C); d/dm is -1 summed across C -> (B, 1).
+    assert as_array(x.grad).shape == (B, C)
+    assert np.allclose(as_array(x.grad), np.ones((B, C)))
+    assert as_array(m.grad).shape == (B, 1), "broadcast (B,1) operand grad must keep shape (B,1)"
+    assert np.allclose(as_array(m.grad), -np.ones((B, C)).sum(axis=1, keepdims=True))  # all -C
+
+
+def test_broadcast_mul_scales_grad_by_other_operand():
+    """(2,3) * (3,): multiply backward applies the local factor at the broadcast
+    shape, then unbroadcasts -- the (3,) operand's grad is the column-sums of the
+    OTHER operand's data."""
+    a_np = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])  # (2, 3)
+    b_np = np.array([2.0, 3.0, 4.0])                      # (3,)
+    a = bcast_tensor(a_np)
+    b = bcast_tensor(b_np)
+
+    z = a * b
+    assert np.allclose(as_array(z), a_np * b_np)
+
+    z.backward()  # seed ones (2, 3)
+    # d/da = ones * b broadcast -> b tiled over rows; d/db = (ones * a) summed over rows.
+    assert np.allclose(as_array(a.grad), np.broadcast_to(b_np, (2, 3)))
+    assert as_array(b.grad).shape == (3,)
+    assert np.allclose(as_array(b.grad), a_np.sum(axis=0))  # [5, 7, 9]

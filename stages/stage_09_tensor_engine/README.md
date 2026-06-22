@@ -22,9 +22,13 @@ $$z = x + y:\quad \frac{\partial L}{\partial x} = g,\quad \frac{\partial L}{\par
 $$z = x \odot y:\quad \frac{\partial L}{\partial x} = g \odot y,\quad \frac{\partial L}{\partial y} = g \odot x$$
 $$z = x^{c}\ (c\ \text{const}):\quad \frac{\partial L}{\partial x} = g \odot c\, x^{c-1}$$
 $$z = \mathrm{ReLU}(x):\quad \frac{\partial L}{\partial x} = g \odot \mathbf{1}[x > 0]$$
+$$z = \tanh(x):\quad \frac{\partial L}{\partial x} = g \odot (1 - z^2)\qquad z = \exp(x):\quad \frac{\partial L}{\partial x} = g \odot z\qquad z = \log(x):\quad \frac{\partial L}{\partial x} = g \oslash x$$
 
-Defer general broadcasting gradient reduction to stage_12; keep this stage to **equal-shaped**
-operands (a scalar Python constant is fine, but two `Tensor`s must share shape).
+And the one **non-elementwise** op every layer needs — matrix multiply $Z = A B$ (the `@` operator):
+$$Z = A B:\quad \frac{\partial L}{\partial A} = G\, B^{\top},\quad \frac{\partial L}{\partial B} = A^{\top} G$$
+where $G = \partial L/\partial Z$. This is the matmul-gradient rule you derived by hand in stage_08, now on the `Tensor`. Support the 2-D case plus the `(n,)@(n,m)` and `(m,n)@(n,)` vector forms the neuron and dense layer use.
+
+Defer general broadcasting gradient reduction to stage_12 and reductions (`sum`/`mean`) to stage_13; keep this stage to **equal-shaped** elementwise operands (a scalar Python constant is fine, but two `Tensor`s must share shape) plus the `@` matmul above.
 
 **Watch**
 - [The spelled-out intro to neural networks and backpropagation: building micrograd](https://www.youtube.com/watch?v=VMj-3S1tku0) — Karpathy builds the exact engine you are now lifting to arrays; watch the `_backward`/topo-sort part.
@@ -40,7 +44,7 @@ rather than copy-pasted. Every later stage imports THIS `Tensor`.
 
 **Exercise** — In `code.py`, implement a single class `Tensor`:
 - **Fields**: `data` (np.ndarray, float64), `grad` (np.ndarray of zeros, same shape), `_prev`
-  (tuple of `Tensor`), `_op` (str, e.g. `""`, `"+"`, `"*"`, `"**"`, `"relu"`), and a private
+  (tuple of `Tensor`), `_op` (str, e.g. `""`, `"+"`, `"*"`, `"**"`, `"relu"`, `"tanh"`, `"exp"`, `"log"`, `"@"`), and a private
   `_backward` callable (defaults to a no-op). (Field names mirror stage_06's `Value`.)
 - **Construction**: `Tensor(data)` accepts a scalar, list, or ndarray; store as `np.asarray(..., dtype=np.float64)`.
 - **Operator overloading** (each returns a new `Tensor`, sets its `parents`/`operation`, and defines
@@ -53,7 +57,9 @@ rather than copy-pasted. Every later stage imports THIS `Tensor`.
     gradient to a scalar when the operand is a 0-d numeric constant (the only
     broadcast case allowed now); equal-shaped `Tensor`s just `+=`. Full
     broadcasting-gradient reduction is stage_12.
-- **Methods**: `relu(self)`; `backward(self)` which (1) topo-sorts via DFS over `_prev`, (2) sets
+- **Elementwise methods**: `relu(self)`, `tanh(self)`, `exp(self)`, `log(self)` — each a new `Tensor` with its own `_backward` (local rules above).
+- **Matmul**: `__matmul__(self, other)` (the `@` operator) with `_backward` pushing `G @ B.T` to the left operand and `A.T @ G` to the right. Handle 2-D and the `(n,)@(n,m)` / `(m,n)@(n,)` vector cases.
+- **Autodiff**: `backward(self)` which (1) topo-sorts via DFS over `_prev`, (2) sets
   `self.grad = np.ones_like(self.data)`, (3) iterates reversed topo order calling `_backward`.
 - **Repr**: `Tensor(data=..., grad=...)`.
 - Allowed tools: Python stdlib + NumPy only. NumPy is for forward array math and storing
@@ -61,9 +67,9 @@ rather than copy-pasted. Every later stage imports THIS `Tensor`.
 
 **Done when**
 - `pytest stage_09_tensor_engine/test.py` passes.
-- Central-difference gradcheck on `+`, `*`, `**`, `-`, `/`, and `relu` matches analytic `grad`
-  within `1e-6` (gradcheck runs on 0-d tensors since there is no `.sum()` yet — that is stage_13;
-  tol relaxed near ReLU kinks).
+- Central-difference gradcheck on `+`, `*`, `**`, `-`, `/`, `relu`, `tanh`, `exp`, `log`, and `@` (matmul)
+  matches analytic `grad` within `1e-6` (elementwise gradcheck runs on 0-d tensors since there is no
+  `.sum()` yet — that is stage_13; matmul gradcheck seeds the output grad with ones directly; tol relaxed near ReLU kinks).
 - A reused tensor (e.g. `y = x*x + x`) accumulates gradient from every path.
 - `backward()` runs once, seeds the output with `ones_like`, and fills `.grad` for every leaf.
 - `data`/`grad` are always `float64` ndarrays of identical shape; `zero_grad()` resets `grad`.

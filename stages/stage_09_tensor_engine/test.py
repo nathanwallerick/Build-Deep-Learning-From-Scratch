@@ -18,6 +18,7 @@ Run: pytest stage_09_tensor_engine/test.py
 import os as _os
 import sys as _sys
 
+import math
 import os
 import sys
 
@@ -89,6 +90,9 @@ SCALAR_FUNCS = {
     "div_const":   (lambda t: t / 4.0,            lambda x: x / 4.0),
     "rdiv_const":  (lambda t: 6.0 / t,            lambda x: 6.0 / x),
     "relu":        (lambda t: t.relu(),           lambda x: max(0.0, x)),
+    "tanh":        (lambda t: t.tanh(),           lambda x: math.tanh(x)),
+    "exp":         (lambda t: t.exp(),            lambda x: math.exp(x)),
+    "log":         (lambda t: t.log(),            lambda x: math.log(x)),
     "self_mul":    (lambda t: t * t,              lambda x: x * x),
     "self_add":    (lambda t: t + t,              lambda x: x + x),
     "reuse":       (lambda t: t * t + t,          lambda x: x * x + x),
@@ -113,6 +117,9 @@ def test_scalar_gradcheck(name, x):
     if name == "relu" and abs(x) < 1e-3:
         pytest.skip("ReLU kink")
 
+    if name == "log" and x <= 0:
+        pytest.skip("log undefined for non-positive input")
+
     ana = analytic_grad_scalar(build, x)
     num = numeric_grad_scalar(ref, x)
     assert np.isclose(ana, num, rtol=1e-4, atol=TOL), (
@@ -124,7 +131,7 @@ def test_scalar_gradcheck(name, x):
 @pytest.mark.parametrize("x", SCALAR_INPUTS)
 def test_scalar_forward(name, x):
     build, ref = SCALAR_FUNCS[name]
-    if name in ("powhalf", "rdiv_const", "div_const") and x <= 0:
+    if name in ("powhalf", "rdiv_const", "div_const", "log") and x <= 0:
         pytest.skip("function undefined for non-positive input")
     out = build(Tensor(float(x)))
     assert np.isclose(float(out.data), ref(x), rtol=1e-6, atol=1e-9), (
@@ -206,6 +213,39 @@ def test_2d_chain_backward():
     expected = 2.0 * (x.data > 0)
     assert np.allclose(x.grad, expected)
     assert x.grad.shape == x.data.shape
+
+
+# --------------------------------------------------------------------------- #
+# matmul (@): forward value + gradient rule dL/dA = G@B.T, dL/dB = A.T@G
+# --------------------------------------------------------------------------- #
+def test_matmul_forward():
+    A = Tensor([[1.0, 2.0], [3.0, 4.0]])
+    B = Tensor([[5.0, 6.0], [7.0, 8.0]])
+    C = A @ B
+    assert np.allclose(C.data, np.array([[1.0, 2.0], [3.0, 4.0]]) @ np.array([[5.0, 6.0], [7.0, 8.0]]))
+    assert C._op == "@"
+    assert set(C._prev) == {A, B}
+
+
+def test_matmul_backward_2d():
+    A = Tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])   # (2,3)
+    B = Tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])  # (3,2)
+    C = A @ B                                          # (2,2)
+    C.backward()                                       # seeds G = ones((2,2))
+    G = np.ones((2, 2))
+    assert np.allclose(A.grad, G @ B.data.T), "dL/dA must equal G @ B.T"
+    assert np.allclose(B.grad, A.data.T @ G), "dL/dB must equal A.T @ G"
+    assert A.grad.shape == A.data.shape and B.grad.shape == B.data.shape
+
+
+def test_matmul_vector_cases():
+    # (n,) @ (n,m) -> (m,)  : the dense-layer single-example case
+    x = Tensor([1.0, 2.0])               # (2,)
+    W = Tensor([[1.0, 0.0, 2.0], [0.0, 3.0, 1.0]])  # (2,3)
+    y = x @ W                            # (3,)
+    assert np.allclose(y.data, x.data @ W.data)
+    y.backward()
+    assert x.grad.shape == x.data.shape and W.grad.shape == W.data.shape
 
 
 # --------------------------------------------------------------------------- #

@@ -10,6 +10,16 @@ objectives every training loop in later stages minimizes.
 Builds on the autodiff `Tensor` from `stage_09` and the broadcasting gradient reduction from
 `stage_12` (so `(B, C)` minus `(B, 1)` backprops correctly).
 
+*Reductions* — stage_09 shipped no reductions and deferred them here, but every loss collapses a
+per-element array to a single scalar, so this stage first ADDS `sum` and `mean` (with backward) to the
+`Tensor`. The backward rule for a reduction is "re-expand the upstream grad over the axes you reduced":
+- **sum** — each input element feeds exactly one output cell with local grad $1$, so
+  $\dfrac{\partial L}{\partial x} = $ the upstream grad *broadcast back* to `x.shape` over the reduced
+  axes (with `keepdims=False`, first restore the reduced axes as size-1, then broadcast).
+- **mean** — `mean = sum / N` with $N$ = number of reduced elements (product of reduced-axis sizes;
+  `x.size` when `axis is None`), so its grad is the same expanded upstream grad **divided by $N$**:
+  $\dfrac{\partial L}{\partial x} = \dfrac{1}{N}\,(\text{upstream grad expanded to } x.shape)$.
+
 *MSE* (regression): $L = \frac{1}{N}\sum_i (\hat y_i - y_i)^2$, so $\dfrac{\partial L}{\partial \hat y_i} = \dfrac{2}{N}(\hat y_i - y_i)$.
 
 *MAE* (regression, robust): $L = \frac{1}{N}\sum_i |\hat y_i - y_i|$, so $\dfrac{\partial L}{\partial \hat y_i} = \dfrac{1}{N}\,\mathrm{sign}(\hat y_i - y_i)$ (subgradient $0$ at the kink).
@@ -29,7 +39,12 @@ averaged over the batch. Deriving this (softmax Jacobian + the $\log$) is the po
 - [Neural Networks Part 5: ArgMax and SoftMax](https://www.youtube.com/watch?v=KpKog-L9veg) — StatQuest: what softmax computes and why.
 - [The spelled-out intro to neural networks (micrograd)](https://www.youtube.com/watch?v=VMj-3S1tku0) — Karpathy; the cross-entropy + softmax loss segment shows the `p - y` gradient in code.
 
-**Cumulative build** — Imports `Tensor` from `stage_09` via `dlfs.stage_import` (reused unchanged, with stage_12's broadcast-correct backward); ADDS the loss functions `mse_loss`, `mae_loss`, `cross_entropy_loss` (+ `softmax`/`log_softmax` via log-sum-exp, and the `one_hot` helper) on top of it.
+**Cumulative build** — Imports the broadcast-capable `Tensor` (stage_12's subclass of the stage_09
+`Tensor`, falling back to stage_09's directly) via `dlfs.stage_import`, then SUBCLASSES it to ADD the
+`sum` / `mean` **reduction ops** (with correct backward) that stage_09 deferred to this stage. On top of
+those reductions it ADDS the loss functions `mse_loss`, `mae_loss`, `cross_entropy_loss` (+
+`softmax`/`log_softmax` via log-sum-exp, and the `one_hot` helper). So this stage is where reductions
+enter the engine — not just the losses.
 
 **Exercise** — In `code.py`, implement these as **functions** that take and return `Tensor`s from
 `stage_09` (import it via `dlfs.stage_import`; do not reimplement it). Build every loss out of `Tensor` ops so gradients flow
@@ -37,6 +52,10 @@ through `Tensor.backward()` — do **not** hand-write any `.grad`. Allowed tools
 creation only), Python stdlib, and your `stage_09` `Tensor` (+ `stage_12` broadcasting). No
 PyTorch/autograd.
 
+- `Tensor.sum(axis=None, keepdims=False) -> Tensor` and `Tensor.mean(axis=None, keepdims=False) -> Tensor`:
+  ADD these reduction methods to the `Tensor` (subclass the imported base). Forward is `np.sum` /
+  `np.mean`; backward expands the upstream grad back to the input shape over the reduced axes (mean also
+  divides by the reduced count $N$). The losses below build on these.
 - `mse_loss(pred, target) -> Tensor`: mean of $(\hat y - y)^2$ over all elements; returns a scalar
   `Tensor`. `pred`/`target` are `Tensor`/array-like of equal shape `(N,)` or `(B, D)`.
 - `mae_loss(pred, target) -> Tensor`: mean of $|\hat y - y|$; scalar `Tensor`. Implement `abs` via
@@ -52,6 +71,9 @@ PyTorch/autograd.
 
 **Done when**
 - `pytest stage_13_loss_functions/test.py` passes.
+- `Tensor.sum` / `Tensor.mean` work with and without `axis` and with `keepdims`; their backward
+  gradchecks against central differences (e.g. `f = (x*x).sum()` has analytic grad `2x`; `mean` grad is
+  all `1/N`). The losses build on these reductions rather than reimplementing them.
 - Forward values match NumPy reference losses; softmax rows sum to 1; cross-entropy is stable for
   logits like `[1000, 1001, 1002]` (no `inf`/`nan`).
 - Central-difference gradcheck of each loss w.r.t. its prediction/logits matches the analytic

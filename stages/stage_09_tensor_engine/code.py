@@ -81,6 +81,27 @@ class Tensor:
         """Elementwise ReLU. z = max(0, self)."""
         raise NotImplementedError("TODO: implement relu + its _backward")
 
+    def tanh(self) -> "Tensor":
+        """Elementwise tanh. z = tanh(self); local grad g * (1 - z**2)."""
+        raise NotImplementedError("TODO: implement tanh + its _backward")
+
+    def exp(self) -> "Tensor":
+        """Elementwise exp. z = exp(self); local grad g * z."""
+        raise NotImplementedError("TODO: implement exp + its _backward")
+
+    def log(self) -> "Tensor":
+        """Elementwise natural log. z = log(self); local grad g / self."""
+        raise NotImplementedError("TODO: implement log + its _backward")
+
+    def __matmul__(self, other: Operand) -> "Tensor":
+        """Matrix product z = self @ other (the ``@`` operator).
+
+        For z = A @ B with upstream grad G: dL/dA = G @ B.T, dL/dB = A.T @ G.
+        Works for 2-D operands and the (n,)@(n,m) / (m,n)@(n,) vector cases the
+        neuron/dense layers use. No broadcasting beyond what NumPy's @ gives;
+        equal-rank operands only (general broadcasting backward is stage_12)."""
+        raise NotImplementedError("TODO: implement matmul + its _backward (G@B.T, A.T@G)")
+
     # ops derived from the primitives above (no new _backward)
     def __neg__(self) -> "Tensor":
         """-self, implemented as self * -1."""
