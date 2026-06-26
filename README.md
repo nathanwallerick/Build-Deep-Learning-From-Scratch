@@ -1,4 +1,4 @@
-# Build Deep Learning From Scratch
+# Build Deep Learning From Scratch - Me
 
 A project-based curriculum that teaches how PyTorch works *internally* by reimplementing it from the ground up. You start with scalar backpropagation, build a reverse-mode autodiff engine, grow it into an N-dimensional `Tensor`, then stack neural-network layers, optimizers, training loops, CNNs, attention, a full Transformer, a Vision Transformer, a small but real PyTorch-like framework, and finally capstone projects. The philosophy: **you are the autodiff library.** Nothing is imported that you haven't already built by hand, so every gradient and every chain-rule accumulation is code you wrote and understand.
 
