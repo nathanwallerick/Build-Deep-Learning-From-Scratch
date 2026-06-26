@@ -67,7 +67,7 @@ class Value:
     
     # helper IMPORTANT
     def _wrap(self, other):
-        return other if isinstance(other, Value) else Value(other)
+        return other if isinstance(other, type(self)) else type(self)(other)
 
     def __add__(self, other):
         """self + other; record (self, other) and op '+'. Wrap a number operand."""
