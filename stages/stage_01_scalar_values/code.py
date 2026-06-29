@@ -96,7 +96,7 @@ class Value:
         """Return -self (as self * -1)."""
         # TODO
 
-        return self._make(- self.data, (self,), "-")
+        return self * -1
 
     def __sub__(self, other):
         """Return self - other (as self + (-other))."""
@@ -118,24 +118,22 @@ class Value:
         """Return other + self."""
         # TODO
 
-        return self + other
+        return self._wrap(other) + self
 
     def __rmul__(self, other):
         """Return other * self."""
         # TODO
 
-        return self * other
+        return self._wrap(other) * self
 
     def __rsub__(self, other):
         """Return other - self (as other + (-self))."""
         # TODO
 
-        other = self._wrap(other)
-        return other - self
+        return self._wrap(other) - self
 
     def __rtruediv__(self, other):
         """Return other / self (as other * self ** -1)."""
         # TODO
 
-        other = self._wrap(other)
-        return other / self
+        return self._wrap(other) / self

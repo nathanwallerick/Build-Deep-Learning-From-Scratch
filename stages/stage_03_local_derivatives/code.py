@@ -60,7 +60,7 @@ class Value(Stage2_Value):
         out = super().__add__(other)
 
         def _backward():
-            self.grad = out.grad
+            self.grad += out.grad
             other.grad += out.grad
 
         out._backward = _backward
